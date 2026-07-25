@@ -40,6 +40,33 @@ HTML = """
 </div>
 """
 
+BRACKET_SEED_HTML = """
+<div id="liquipedia-tier-one-matches">
+  <div class="match-info">
+    <span class="timer-object" data-timestamp="1785747600">date</span>
+    <div class="match-info-header">
+      <div class="match-info-header-opponent">
+        <div class="brkts-opponent-block-literal flipped">A3</div>
+      </div>
+      <div class="match-info-header-scoreholder">
+        <span class="match-info-header-scoreholder-lower">(Bo3)</span>
+      </div>
+      <div class="match-info-header-opponent">
+        <div class="brkts-opponent-block-literal">B4</div>
+      </div>
+    </div>
+    <div class="match-info-tournament-name">
+      <a href="/dota2/1win_Essence/2#Playoffs">1win Essence II - Playoffs</a>
+    </div>
+    <div class="match-info-links">
+      <a href="/dota2/index.php?title=Match:ID_PrdW9jwDqV_R01-M001&amp;action=edit">
+        details
+      </a>
+    </div>
+  </div>
+</div>
+"""
+
 
 class ParseUpcomingMatchesTest(unittest.TestCase):
     def test_parses_only_upcoming_match_cards(self) -> None:
@@ -58,6 +85,16 @@ class ParseUpcomingMatchesTest(unittest.TestCase):
             match.source_url,
             "https://liquipedia.net/dota2/Match:ID_abc_R01-M001",
         )
+
+    def test_parses_bracket_seed_opponents_without_name_elements(self) -> None:
+        matches = parse_upcoming_matches(BRACKET_SEED_HTML)
+
+        self.assertEqual(len(matches), 1)
+        match = matches[0]
+        self.assertEqual(match.team1, "A3")
+        self.assertEqual(match.team2, "B4")
+        self.assertEqual(match.series_format, "Bo3")
+        self.assertEqual(match.source_id, "Match:ID_PrdW9jwDqV_R01-M001")
 
     def test_refuses_to_return_an_empty_calendar(self) -> None:
         with self.assertRaises(LiquipediaError):

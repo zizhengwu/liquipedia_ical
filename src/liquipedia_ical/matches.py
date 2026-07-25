@@ -120,8 +120,8 @@ def parse_upcoming_matches(html: str) -> list[Match]:
 
 def _parse_match_card(card: Tag) -> Match | None:
     timestamp = card.select_one(".timer-object[data-timestamp]")
-    opponents = card.select(".match-info-header-opponent .name")
-    if timestamp is None or len(opponents) < 2:
+    opponent_slots = card.select(".match-info-header-opponent")
+    if timestamp is None or len(opponent_slots) != 2:
         return None
 
     try:
@@ -129,8 +129,8 @@ def _parse_match_card(card: Tag) -> Match | None:
     except (KeyError, TypeError, ValueError, OSError):
         return None
 
-    team1 = _text(opponents[0]) or "TBD"
-    team2 = _text(opponents[1]) or "TBD"
+    team1 = _opponent_label(opponent_slots[0])
+    team2 = _opponent_label(opponent_slots[1])
     tournament = _text(card.select_one(".match-info-tournament-name")) or "Dota 2"
     format_text = _text(card.select_one(".match-info-header-scoreholder-lower"))
     series_format = format_text.strip("() ") or "TBD"
@@ -148,6 +148,15 @@ def _parse_match_card(card: Tag) -> Match | None:
         source_url=source_url,
         source_id=source_id,
     )
+
+
+def _opponent_label(opponent: Tag) -> str:
+    """Read team names as well as bracket seeds such as "A3" and "B4"."""
+    for selector in (".name", ".brkts-opponent-block-literal"):
+        label = _text(opponent.select_one(selector))
+        if label:
+            return label
+    return _text(opponent) or "TBD"
 
 
 def _match_identity_and_url(card: Tag) -> tuple[str | None, str | None]:
