@@ -78,6 +78,20 @@ class BuildCalendarTest(unittest.TestCase):
 
         self.assertEqual(_event_block(later), original_event)
 
+    def test_retains_a_started_match_when_it_disappears_before_estimated_end(
+        self,
+    ) -> None:
+        first = build_calendar([self.match], self.first_run)
+        original_event = _event_block(first)
+
+        later = build_calendar(
+            [],
+            datetime(2026, 7, 17, 12, 0, tzinfo=UTC),
+            previous_calendar=first,
+        )
+
+        self.assertEqual(_event_block(later), original_event)
+
     def test_does_not_update_an_expired_match(self) -> None:
         first = build_calendar([self.match], self.first_run)
         changed = Match(

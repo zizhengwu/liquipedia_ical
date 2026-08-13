@@ -37,9 +37,12 @@ uv run python -m unittest discover -s tests -v
 - Liquipedia provides start times but not end times. Event lengths are estimates based on the series format: Bo1 is one hour, Bo3 is three hours, Bo5 is five hours, and an unknown format is three hours.
 - Events are transparent, so they do not mark subscribers as busy.
 - Stable match IDs become stable iCalendar UIDs. If a scheduled time or participant changes, the existing event is updated instead of duplicated.
-- Expired matches remain in the feed unchanged, providing a persistent match history.
+- Matches remain in the feed unchanged once their scheduled start time passes,
+  providing a persistent history even when a series finishes earlier than its
+  estimated duration and disappears from Liquipedia's upcoming-match response.
 - Existing upcoming matches are updated by stable match ID, and newly discovered matches are appended.
-- Missing future matches are removed because Liquipedia may have cancelled them.
+- Missing matches that have not started are removed because Liquipedia may have
+  cancelled them.
 - The checked-in `dota2-matches.ics` file is the archive; deleting it resets the retained history.
 
 ## Liquipedia usage

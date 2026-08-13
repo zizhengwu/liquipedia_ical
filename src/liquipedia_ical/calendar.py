@@ -91,9 +91,9 @@ def build_calendar(
         )
 
     for uid, old in previous.items():
-        if uid in seen_uids or old.end is None or old.end > generated_at:
+        if uid in seen_uids or old.start is None or old.start > generated_at:
             continue
-        events.append((old.start or old.end, old.raw_block))
+        events.append((old.start, old.raw_block))
 
     lines = [
         "BEGIN:VCALENDAR",
