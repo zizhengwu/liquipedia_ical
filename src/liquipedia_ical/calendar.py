@@ -56,38 +56,8 @@ def build_calendar(
             dtstamp = _format_datetime(generated_at)
             sequence = old.sequence + 1 if old is not None else 0
 
-        summary = f"{match.team1} vs {match.team2} ({match.series_format}) — {match.tournament}"
-        description = (
-            f"Tournament: {match.tournament}\n"
-            f"Liquipedia tier: {match.liquipedia_tier}\n"
-            f"Format: {match.series_format}\n"
-            f"Start: {_format_datetime(match.start)} (UTC)\n\n"
-            "Source: Liquipedia Dota 2 Wiki (CC BY-SA 3.0)\n"
-            f"{match.source_url}"
-        )
-        end = match.start + match.duration
-        event_lines = [
-            "BEGIN:VEVENT",
-            f"UID:{uid}",
-            f"DTSTAMP:{dtstamp}",
-            f"LAST-MODIFIED:{dtstamp}",
-            f"SEQUENCE:{sequence}",
-            f"DTSTART:{_format_datetime(match.start)}",
-            f"DTEND:{_format_datetime(end)}",
-            _text_property("SUMMARY", summary),
-            _text_property("DESCRIPTION", description),
-            f"URL:{match.source_url}",
-            f"CATEGORIES:Dota 2,Esports,Liquipedia Tier {match.liquipedia_tier}",
-            "STATUS:CONFIRMED",
-            "TRANSP:TRANSPARENT",
-            f"X-LIQUIPEDIA-CONTENT-HASH:{content_hash}",
-            "END:VEVENT",
-        ]
         events.append(
-            (
-                match.start,
-                "\r\n".join(_fold_line(line) for line in event_lines),
-            )
+            (match.start, _render_event(match, uid, content_hash, dtstamp, sequence))
         )
 
     for uid, old in previous.items():
@@ -118,6 +88,39 @@ def build_calendar(
     if event_blocks:
         return f"{header}\r\n{event_blocks}\r\nEND:VCALENDAR\r\n"
     return f"{header}\r\nEND:VCALENDAR\r\n"
+
+
+def _render_event(
+    match: Match, uid: str, content_hash: str, dtstamp: str, sequence: int
+) -> str:
+    summary = f"{match.team1} vs {match.team2} ({match.series_format}) — {match.tournament}"
+    description = (
+        f"Tournament: {match.tournament}\n"
+        f"Liquipedia tier: {match.liquipedia_tier}\n"
+        f"Format: {match.series_format}\n"
+        f"Start: {_format_datetime(match.start)} (UTC)\n\n"
+        "Source: Liquipedia Dota 2 Wiki (CC BY-SA 3.0)\n"
+        f"{match.source_url}"
+    )
+    end = match.start + match.duration
+    event_lines = [
+        "BEGIN:VEVENT",
+        f"UID:{uid}",
+        f"DTSTAMP:{dtstamp}",
+        f"LAST-MODIFIED:{dtstamp}",
+        f"SEQUENCE:{sequence}",
+        f"DTSTART:{_format_datetime(match.start)}",
+        f"DTEND:{_format_datetime(end)}",
+        _text_property("SUMMARY", summary),
+        _text_property("DESCRIPTION", description),
+        f"URL:{match.source_url}",
+        f"CATEGORIES:Dota 2,Esports,Liquipedia Tier {match.liquipedia_tier}",
+        "STATUS:CONFIRMED",
+        "TRANSP:TRANSPARENT",
+        f"X-LIQUIPEDIA-CONTENT-HASH:{content_hash}",
+        "END:VEVENT",
+    ]
+    return "\r\n".join(_fold_line(line) for line in event_lines)
 
 
 def event_uid(match: Match) -> str:

@@ -6,7 +6,6 @@ import tempfile
 from urllib.parse import parse_qs, urlparse
 import unittest
 from unittest.mock import patch
-from bs4 import BeautifulSoup
 
 from liquipedia_ical.matches import (
     LiquipediaError,
@@ -16,36 +15,37 @@ from liquipedia_ical.matches import (
 )
 
 
-HTML = """
-<div data-toggle-area-content="1">
-  <div class="match-info">
-    <span class="timer-object" data-timestamp="1784286000">date</span>
-    <div class="match-info-header">
-      <div class="match-info-header-opponent"><span class="name">Team &amp; One</span></div>
-      <div class="match-info-header-scoreholder">
-        <span class="match-info-header-scoreholder-lower">(Bo3)</span>
-      </div>
-      <div class="match-info-header-opponent"><span class="name">Team Two</span></div>
-    </div>
-    <div class="match-info-tournament-name">
-      <a href="/dota2/Test_League">Test League - Playoffs</a>
-    </div>
-    <div class="match-info-links">
-      <a href="/dota2/index.php?title=Match:ID_abc_R01-M001&amp;action=edit&amp;redlink=1">details</a>
-    </div>
+def match_card(
+    tournament: str = "Test League - Playoffs",
+    match_id: str = "abc_R01-M001",
+    timestamp: str = "1784286000",
+) -> str:
+    return f"""
+<div class="match-info">
+  <span class="timer-object" data-timestamp="{timestamp}">date</span>
+  <div class="match-info-header">
+    <div class="match-info-header-opponent"><span class="name">Team &amp; One</span></div>
+    <span class="match-info-header-scoreholder-lower">(Bo3)</span>
+    <div class="match-info-header-opponent"><span class="name">Team Two</span></div>
   </div>
-</div>
-<div data-toggle-area-content="2">
-  <div class="match-info">
-    <span class="timer-object" data-timestamp="1">completed</span>
-    <div class="match-info-header-opponent"><span class="name">Old One</span></div>
-    <div class="match-info-header-opponent"><span class="name">Old Two</span></div>
+  <div class="match-info-tournament-name">
+    <a href="/dota2/Test_League">{tournament}</a>
+  </div>
+  <div class="match-info-links">
+    <a href="/dota2/index.php?title=Match:ID_{match_id}&amp;action=edit">details</a>
   </div>
 </div>
 """
 
+
+def tier_section(tier: int, *cards: str) -> str:
+    return f'<div id="liquipedia-tier-{tier}-matches">{"".join(cards)}</div>'
+
+
+HTML = tier_section(1, match_card())
+
 BRACKET_SEED_HTML = """
-<div id="liquipedia-tier-one-matches">
+<div id="liquipedia-tier-1-matches">
   <div class="match-info">
     <span class="timer-object" data-timestamp="1785747600">date</span>
     <div class="match-info-header">
@@ -80,45 +80,39 @@ class ParseUpcomingMatchesTest(unittest.TestCase):
             self.assertEqual(load_allowlist(path), {"PGL Wallachia Season 9"})
 
     def test_includes_only_allowlisted_tier_two_tournaments_and_stages(self) -> None:
-        tier_two = BRACKET_SEED_HTML.replace("tier-one", "tier-two").replace(
-            "1win Essence II - Playoffs", "PGL Wallachia S9 - Round 1"
+        html = tier_section(1, match_card()) + tier_section(
+            2,
+            match_card("PGL Wallachia S9 - Round 1", "allowed"),
+            match_card("PGL Wallachia S90 - Round 1", "other"),
         )
-        card = str(BeautifulSoup(tier_two, "html.parser").select_one(".match-info"))
-        other = card.replace("PGL Wallachia S9", "PGL Wallachia S90").replace(
-            "PrdW9jwDqV", "other"
-        )
-        soup_html = '<div id="liquipedia-tier-two-matches">' + card + other + "</div>"
-        tier_one = str(BeautifulSoup(HTML, "html.parser").select_one(".match-info"))
         matches = parse_upcoming_matches(
-            '<div id="liquipedia-tier-one-matches">' + tier_one + "</div>" + soup_html,
-            tier_two_allowlist={"PGL Wallachia Season 9"},
+            html, tier_two_allowlist={"PGL Wallachia Season 9"}
         )
         self.assertEqual([match.liquipedia_tier for match in matches], [1, 2])
         self.assertEqual(matches[1].tournament, "PGL Wallachia S9 - Round 1")
 
     def test_empty_tier_two_section_is_valid(self) -> None:
-        self.assertEqual(parse_upcoming_matches(
-            '<div id="liquipedia-tier-one-matches"></div>'
-            '<div id="liquipedia-tier-two-matches"></div>',
+        matches = parse_upcoming_matches(
+            tier_section(1) + tier_section(2),
             tier_two_allowlist={"PGL Wallachia Season 9"},
-        ), [])
+        )
+        self.assertEqual(matches, [])
 
     def test_missing_tier_section_is_rejected(self) -> None:
-        for tier in ("one", "two"):
+        for tier in (1, 2):
             with self.subTest(tier=tier), self.assertRaises(LiquipediaError):
                 parse_upcoming_matches(
-                    f'<div id="liquipedia-tier-{tier}-matches"></div>',
+                    tier_section(tier),
                     tier_two_allowlist={"PGL Wallachia Season 9"},
                 )
 
     def test_malformed_allowed_match_is_rejected(self) -> None:
-        html = BRACKET_SEED_HTML.replace("tier-one", "tier-two").replace(
-            "1win Essence II - Playoffs", "PGL Wallachia S9"
-        ).replace('data-timestamp="1785747600"', 'data-timestamp="invalid"')
-        with self.assertRaises(LiquipediaError):
+        html = tier_section(1) + tier_section(
+            2, match_card("PGL Wallachia S9", timestamp="invalid")
+        )
+        with self.assertRaisesRegex(LiquipediaError, "invalid timestamp"):
             parse_upcoming_matches(
-                '<div id="liquipedia-tier-one-matches"></div>' + html,
-                tier_two_allowlist=load_allowlist(),
+                html, tier_two_allowlist={"PGL Wallachia Season 9"}
             )
 
     @patch("liquipedia_ical.matches.urlopen")
@@ -133,7 +127,10 @@ class ParseUpcomingMatchesTest(unittest.TestCase):
         self.assertIn("filterbuttons-liquipediatier=2", query["text"][0])
 
     def test_parses_only_upcoming_match_cards(self) -> None:
-        matches = parse_upcoming_matches(HTML)
+        matches = parse_upcoming_matches(
+            HTML + '<div data-toggle-area-content="2">'
+            + match_card("Completed tournament", "old") + "</div>"
+        )
 
         self.assertEqual(len(matches), 1)
         match = matches[0]
@@ -159,24 +156,23 @@ class ParseUpcomingMatchesTest(unittest.TestCase):
         self.assertEqual(match.series_format, "Bo3")
         self.assertEqual(match.source_id, "Match:ID_PrdW9jwDqV_R01-M001")
 
-    def test_refuses_to_return_an_empty_calendar(self) -> None:
-        with self.assertRaises(LiquipediaError):
-            parse_upcoming_matches('<div data-toggle-area-content="1"></div>')
+    def test_rejects_html_without_the_requested_section(self) -> None:
+        for html in ("", match_card(), '<div data-toggle-area-content="1"></div>'):
+            with self.subTest(html=html), self.assertRaisesRegex(
+                LiquipediaError, "missing the Tier 1 section"
+            ):
+                parse_upcoming_matches(html)
 
-    def test_accepts_a_trusted_empty_tier_one_response(self) -> None:
-        matches = parse_upcoming_matches('<div id="liquipedia-tier-one-matches"></div>')
+    def test_accepts_an_empty_tier_one_section(self) -> None:
+        matches = parse_upcoming_matches('<div id="liquipedia-tier-1-matches"></div>')
 
         self.assertEqual(matches, [])
 
     def test_refuses_to_return_partial_data(self) -> None:
-        malformed = HTML.replace(
-            '</div>\n</div>\n<div data-toggle-area-content="2">',
-            '<div class="match-info">missing required fields</div></div>\n'
-            '<div data-toggle-area-content="2">',
-            1,
+        malformed = tier_section(
+            1, match_card(), '<div class="match-info">missing required fields</div>'
         )
-
-        with self.assertRaises(LiquipediaError):
+        with self.assertRaisesRegex(LiquipediaError, "timestamp and two opponent slots"):
             parse_upcoming_matches(malformed)
 
     @patch("liquipedia_ical.matches.urlopen")
@@ -191,7 +187,7 @@ class ParseUpcomingMatchesTest(unittest.TestCase):
         query = parse_qs(urlparse(request.full_url).query)
         self.assertNotIn("page", query)
         self.assertEqual(query["title"], ["Liquipedia:Matches"])
-        self.assertIn('id="liquipedia-tier-one-matches"', query["text"][0])
+        self.assertIn('id="liquipedia-tier-1-matches"', query["text"][0])
         self.assertIn("filterbuttons-liquipediatier=1", query["text"][0])
         self.assertIn("type=upcoming", query["text"][0])
 

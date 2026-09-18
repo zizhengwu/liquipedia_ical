@@ -14,15 +14,6 @@ from bs4 import BeautifulSoup, Tag
 
 API_URL = "https://liquipedia.net/dota2/api.php"
 MATCHES_PAGE_URL = "https://liquipedia.net/dota2/Liquipedia:Matches"
-TIER_ONE_MATCHES_WIKITEXT = (
-    '<div id="liquipedia-tier-one-matches">'
-    "{{#invoke:Lua|invoke|module=MatchTicker/Custom|fn=mainPage|dev=false|"
-    "type=upcoming|limit=50|filterbuttons-liquipediatier=1}}"
-    "</div>"
-)
-TIER_TWO_MATCHES_WIKITEXT = TIER_ONE_MATCHES_WIKITEXT.replace(
-    "tier-one", "tier-two"
-).replace("liquipediatier=1", "liquipediatier=2")
 DEFAULT_ALLOWLIST = Path(__file__).parent / "data" / "tier2_allowlist.txt"
 
 
@@ -63,6 +54,15 @@ class Match:
         return timedelta(hours=max(1, min(hours, 8)))
 
 
+def _matches_wikitext(tier: int) -> str:
+    return (
+        f'<div id="liquipedia-tier-{tier}-matches">'
+        "{{#invoke:Lua|invoke|module=MatchTicker/Custom|fn=mainPage|dev=false|"
+        f"type=upcoming|limit=50|filterbuttons-liquipediatier={tier}"
+        "}}</div>"
+    )
+
+
 def fetch_matches_html(
     user_agent: str, timeout: float = 30, *, include_tier_two: bool = False
 ) -> str:
@@ -71,8 +71,8 @@ def fetch_matches_html(
         {
             "action": "parse",
             "title": "Liquipedia:Matches",
-            "text": TIER_ONE_MATCHES_WIKITEXT
-            + (TIER_TWO_MATCHES_WIKITEXT if include_tier_two else ""),
+            "text": _matches_wikitext(1)
+            + (_matches_wikitext(2) if include_tier_two else ""),
             "prop": "text",
             "format": "json",
             "formatversion": "2",
@@ -113,52 +113,26 @@ def parse_upcoming_matches(
 ) -> list[Match]:
     """Parse Tier 1 matches and explicitly allowed Tier 2 tournaments."""
     soup = BeautifulSoup(html, "html.parser")
-    container = soup.select_one("#liquipedia-tier-one-matches")
-    if tier_two_allowlist and container is None:
+    container = soup.select_one("#liquipedia-tier-1-matches")
+    if container is None:
         raise LiquipediaError("Liquipedia response is missing the Tier 1 section")
-    trusted_tier_one_response = container is not None
-    if container is None:
-        container = soup.select_one('[data-toggle-area-content="1"]')
-    if container is None:
-        expansion = soup.select_one('[data-filter-expansion-template*="type=upcoming"]')
-        container = expansion
-    if container is None:
-        container = soup
-
-    cards = container.select(".match-info")
-    matches: list[Match] = []
-    for card in cards:
-        match = _parse_match_card(card)
-        if match is not None:
-            matches.append(match)
-
-    if not matches and not trusted_tier_one_response:
-        raise LiquipediaError(
-            "Liquipedia returned no parseable upcoming matches; refusing to replace the calendar"
-        )
-    if len(matches) != len(cards):
-        raise LiquipediaError(
-            f"Parsed only {len(matches)} of {len(cards)} upcoming matches; "
-            "refusing to replace the calendar with partial data"
-        )
+    matches = [_parse_match_card(card) for card in container.select(".match-info")]
 
     if tier_two_allowlist:
-        tier_two = soup.select_one("#liquipedia-tier-two-matches")
+        tier_two = soup.select_one("#liquipedia-tier-2-matches")
         if tier_two is None:
             raise LiquipediaError("Liquipedia response is missing the Tier 2 section")
         allowed = {_tournament_key(name) for name in tier_two_allowlist}
         source_ids = {match.source_id for match in matches if match.source_id}
         for card in tier_two.select(".match-info"):
             name = _text(card.select_one(".match-info-tournament-name"))
+            name = _tournament_key(name)
             if not any(
-                _tournament_key(name) == entry
-                or _tournament_key(name).startswith(entry + " - ")
+                name == entry or name.startswith(entry + " - ")
                 for entry in allowed
             ):
                 continue
             match = _parse_match_card(card, liquipedia_tier=2)
-            if match is None:
-                raise LiquipediaError("Could not parse an allowlisted Tier 2 match")
             if match.source_id and match.source_id in source_ids:
                 continue
             matches.append(match)
@@ -168,16 +142,16 @@ def parse_upcoming_matches(
     return sorted(matches, key=lambda match: (match.start, match.team1, match.team2))
 
 
-def _parse_match_card(card: Tag, liquipedia_tier: int = 1) -> Match | None:
+def _parse_match_card(card: Tag, liquipedia_tier: int = 1) -> Match:
     timestamp = card.select_one(".timer-object[data-timestamp]")
     opponent_slots = card.select(".match-info-header-opponent")
     if timestamp is None or len(opponent_slots) != 2:
-        return None
+        raise LiquipediaError("Match card requires a timestamp and two opponent slots")
 
     try:
         start = datetime.fromtimestamp(int(timestamp["data-timestamp"]), UTC)
-    except (KeyError, TypeError, ValueError, OSError):
-        return None
+    except (TypeError, ValueError, OSError, OverflowError) as error:
+        raise LiquipediaError("Match card has an invalid timestamp") from error
 
     team1 = _opponent_label(opponent_slots[0])
     team2 = _opponent_label(opponent_slots[1])
