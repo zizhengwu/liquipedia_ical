@@ -9,8 +9,10 @@ import tempfile
 
 from liquipedia_ical.calendar import build_calendar, read_previous_events
 from liquipedia_ical.matches import (
+    DEFAULT_ALLOWLIST,
     LiquipediaError,
     fetch_matches_html,
+    load_allowlist,
     parse_upcoming_matches,
 )
 
@@ -28,6 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--user-agent",
         help="contact-bearing Liquipedia User-Agent; defaults to LIQUIPEDIA_USER_AGENT",
+    )
+    parser.add_argument(
+        "--tier2-allowlist",
+        type=Path,
+        default=DEFAULT_ALLOWLIST,
+        help="text file of allowed Tier 2 tournament names (default: bundled allowlist)",
     )
     parser.add_argument(
         "--timeout",
@@ -56,8 +64,11 @@ def main(argv: list[str] | None = None) -> int:
     previous = output.read_bytes().decode("utf-8") if output.exists() else None
 
     try:
-        html = fetch_matches_html(user_agent=user_agent, timeout=args.timeout)
-        matches = parse_upcoming_matches(html)
+        allowlist = load_allowlist(args.tier2_allowlist)
+        html = fetch_matches_html(
+            user_agent=user_agent, timeout=args.timeout, include_tier_two=bool(allowlist)
+        )
+        matches = parse_upcoming_matches(html, tier_two_allowlist=allowlist)
         calendar = build_calendar(matches, datetime.now(UTC), previous)
     except (LiquipediaError, OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from dataclasses import replace
 import re
 import unittest
 
@@ -7,6 +8,16 @@ from liquipedia_ical.matches import Match
 
 
 class BuildCalendarTest(unittest.TestCase):
+    def test_tier_change_updates_metadata_without_changing_uid(self) -> None:
+        first = build_calendar([self.match], self.first_run)
+        tier_two = replace(self.match, liquipedia_tier=2)
+        calendar = build_calendar([tier_two], self.first_run, first)
+        unfolded = re.sub(r"\r\n ", "", calendar)
+        self.assertEqual(event_uid(self.match), event_uid(tier_two))
+        self.assertIn("Liquipedia tier: 2", unfolded)
+        self.assertIn("CATEGORIES:Dota 2,Esports,Liquipedia Tier 2", unfolded)
+        self.assertIn("SEQUENCE:1", unfolded)
+
     def setUp(self) -> None:
         self.match = Match(
             start=datetime(2026, 7, 17, 11, 0, tzinfo=UTC),

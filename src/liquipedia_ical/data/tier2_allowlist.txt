@@ -1,0 +1,4 @@
+# Tier 2 tournament names, one per line. Blank lines and # comments are ignored.
+# Stage suffixes (e.g. " - Playoffs") are included automatically.
+# "Season 9" also matches Liquipedia's abbreviated "S9" spelling.
+PGL Wallachia Season 9

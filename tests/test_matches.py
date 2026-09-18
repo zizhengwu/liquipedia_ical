@@ -1,13 +1,17 @@
 from datetime import UTC, datetime, timedelta
 import gzip
 import json
+from pathlib import Path
+import tempfile
 from urllib.parse import parse_qs, urlparse
 import unittest
 from unittest.mock import patch
+from bs4 import BeautifulSoup
 
 from liquipedia_ical.matches import (
     LiquipediaError,
     fetch_matches_html,
+    load_allowlist,
     parse_upcoming_matches,
 )
 
@@ -69,6 +73,65 @@ BRACKET_SEED_HTML = """
 
 
 class ParseUpcomingMatchesTest(unittest.TestCase):
+    def test_loads_allowlist_with_comments_and_blank_lines(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "allowlist.txt"
+            path.write_text("# comment\n\n PGL Wallachia Season 9 \n", encoding="utf-8")
+            self.assertEqual(load_allowlist(path), {"PGL Wallachia Season 9"})
+
+    def test_includes_only_allowlisted_tier_two_tournaments_and_stages(self) -> None:
+        tier_two = BRACKET_SEED_HTML.replace("tier-one", "tier-two").replace(
+            "1win Essence II - Playoffs", "PGL Wallachia S9 - Round 1"
+        )
+        card = str(BeautifulSoup(tier_two, "html.parser").select_one(".match-info"))
+        other = card.replace("PGL Wallachia S9", "PGL Wallachia S90").replace(
+            "PrdW9jwDqV", "other"
+        )
+        soup_html = '<div id="liquipedia-tier-two-matches">' + card + other + "</div>"
+        tier_one = str(BeautifulSoup(HTML, "html.parser").select_one(".match-info"))
+        matches = parse_upcoming_matches(
+            '<div id="liquipedia-tier-one-matches">' + tier_one + "</div>" + soup_html,
+            tier_two_allowlist={"PGL Wallachia Season 9"},
+        )
+        self.assertEqual([match.liquipedia_tier for match in matches], [1, 2])
+        self.assertEqual(matches[1].tournament, "PGL Wallachia S9 - Round 1")
+
+    def test_empty_tier_two_section_is_valid(self) -> None:
+        self.assertEqual(parse_upcoming_matches(
+            '<div id="liquipedia-tier-one-matches"></div>'
+            '<div id="liquipedia-tier-two-matches"></div>',
+            tier_two_allowlist={"PGL Wallachia Season 9"},
+        ), [])
+
+    def test_missing_tier_section_is_rejected(self) -> None:
+        for tier in ("one", "two"):
+            with self.subTest(tier=tier), self.assertRaises(LiquipediaError):
+                parse_upcoming_matches(
+                    f'<div id="liquipedia-tier-{tier}-matches"></div>',
+                    tier_two_allowlist={"PGL Wallachia Season 9"},
+                )
+
+    def test_malformed_allowed_match_is_rejected(self) -> None:
+        html = BRACKET_SEED_HTML.replace("tier-one", "tier-two").replace(
+            "1win Essence II - Playoffs", "PGL Wallachia S9"
+        ).replace('data-timestamp="1785747600"', 'data-timestamp="invalid"')
+        with self.assertRaises(LiquipediaError):
+            parse_upcoming_matches(
+                '<div id="liquipedia-tier-one-matches"></div>' + html,
+                tier_two_allowlist=load_allowlist(),
+            )
+
+    @patch("liquipedia_ical.matches.urlopen")
+    def test_fetch_requests_both_tiers_in_one_call(self, mock_urlopen) -> None:
+        mock_urlopen.return_value = _Response(
+            gzip.compress(json.dumps({"parse": {"text": HTML}}).encode("utf-8"))
+        )
+        fetch_matches_html("Test/1.0 (test@example.com)", include_tier_two=True)
+        mock_urlopen.assert_called_once()
+        query = parse_qs(urlparse(mock_urlopen.call_args.args[0].full_url).query)
+        self.assertIn("filterbuttons-liquipediatier=1", query["text"][0])
+        self.assertIn("filterbuttons-liquipediatier=2", query["text"][0])
+
     def test_parses_only_upcoming_match_cards(self) -> None:
         matches = parse_upcoming_matches(HTML)
 

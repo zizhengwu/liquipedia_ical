@@ -59,7 +59,7 @@ def build_calendar(
         summary = f"{match.team1} vs {match.team2} ({match.series_format}) — {match.tournament}"
         description = (
             f"Tournament: {match.tournament}\n"
-            "Liquipedia tier: 1\n"
+            f"Liquipedia tier: {match.liquipedia_tier}\n"
             f"Format: {match.series_format}\n"
             f"Start: {_format_datetime(match.start)} (UTC)\n\n"
             "Source: Liquipedia Dota 2 Wiki (CC BY-SA 3.0)\n"
@@ -77,7 +77,7 @@ def build_calendar(
             _text_property("SUMMARY", summary),
             _text_property("DESCRIPTION", description),
             f"URL:{match.source_url}",
-            "CATEGORIES:Dota 2,Esports,Liquipedia Tier 1",
+            f"CATEGORIES:Dota 2,Esports,Liquipedia Tier {match.liquipedia_tier}",
             "STATUS:CONFIRMED",
             "TRANSP:TRANSPARENT",
             f"X-LIQUIPEDIA-CONTENT-HASH:{content_hash}",
@@ -104,7 +104,8 @@ def build_calendar(
         _text_property("X-WR-CALNAME", "Dota 2 Tier 1 Matches — Liquipedia"),
         _text_property(
             "X-WR-CALDESC",
-            f"Liquipedia Tier 1 Dota 2 match schedule and history from {MATCHES_PAGE_URL}",
+            "Liquipedia Tier 1 and allowlisted Tier 2 Dota 2 match schedule "
+            f"and history from {MATCHES_PAGE_URL}",
         ),
         "X-WR-TIMEZONE:UTC",
         "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
@@ -140,7 +141,7 @@ def event_content_hash(match: Match) -> str:
         "team2": match.team2,
         "tournament": match.tournament,
         "format": match.series_format,
-        "liquipedia_tier": 1,
+        "liquipedia_tier": match.liquipedia_tier,
         "url": match.source_url,
     }
     serialized = json.dumps(
