@@ -20,7 +20,6 @@ class PreviousEvent:
     dtstamp: str
     sequence: int
     start: datetime | None
-    end: datetime | None
     raw_block: str
     is_qualifier: bool = False
 
@@ -37,24 +36,21 @@ def build_calendar(
         for uid, event in read_previous_events(previous_calendar or "").items()
         if not event.is_qualifier
     }
-    events: list[tuple[datetime, str]] = []
-    seen_uids: set[str] = set()
+    events: list[tuple[datetime, str, str]] = []
+    current: dict[str, Match] = {}
 
-    for match in sorted(matches, key=lambda item: (item.start, item.team1, item.team2)):
+    for match in matches:
         if is_qualifier_event(match.tournament, match.source_url):
             continue
         uid = event_uid(match)
-        if uid in seen_uids:
-            raise ValueError(
-                f"Duplicate calendar UID generated for {match.team1} vs {match.team2}"
-            )
-        seen_uids.add(uid)
+        # Prefer Tier 1 across tiers; within a tier, keep the first occurrence.
+        existing = current.get(uid)
+        if existing is None or match.liquipedia_tier < existing.liquipedia_tier:
+            current[uid] = match
 
+    for uid, match in current.items():
         content_hash = event_content_hash(match)
         old = previous.get(uid)
-        if old is not None and old.end is not None and old.end <= generated_at:
-            events.append((old.start or match.start, old.raw_block))
-            continue
 
         if old is not None and old.content_hash == content_hash:
             dtstamp = old.dtstamp
@@ -64,13 +60,13 @@ def build_calendar(
             sequence = old.sequence + 1 if old is not None else 0
 
         events.append(
-            (match.start, _render_event(match, uid, content_hash, dtstamp, sequence))
+            (match.start, uid, _render_event(match, uid, content_hash, dtstamp, sequence))
         )
 
     for uid, old in previous.items():
-        if uid in seen_uids or old.start is None or old.start > generated_at:
+        if uid in current or old.start is None or old.start > generated_at:
             continue
-        events.append((old.start, old.raw_block))
+        events.append((old.start, uid, old.raw_block))
 
     lines = [
         "BEGIN:VCALENDAR",
@@ -90,7 +86,7 @@ def build_calendar(
     ]
     header = "\r\n".join(_fold_line(line) for line in lines)
     event_blocks = "\r\n".join(
-        block for _, block in sorted(events, key=lambda item: item[0])
+        block for _, _, block in sorted(events, key=lambda item: (item[0], item[1]))
     )
     if event_blocks:
         return f"{header}\r\n{event_blocks}\r\nEND:VCALENDAR\r\n"
@@ -131,15 +127,13 @@ def _render_event(
 
 
 def event_uid(match: Match) -> str:
-    identity = match.source_id or "|".join(
-        (
-            _format_datetime(match.start),
-            match.team1.casefold(),
-            match.team2.casefold(),
-            match.tournament.casefold(),
+    """Use only a source identity that survives schedule and participant changes."""
+    if not match.source_id:
+        raise ValueError(
+            f"Missing Liquipedia match ID for {match.team1} vs {match.team2} "
+            f"in {match.tournament}; cannot safely identify schedule updates"
         )
-    )
-    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+    digest = hashlib.sha256(match.source_id.encode("utf-8")).hexdigest()[:24]
     return f"{digest}@{UID_DOMAIN}"
 
 
@@ -184,7 +178,6 @@ def read_previous_events(calendar: str) -> dict[str, PreviousEvent]:
                 dtstamp=dtstamp,
                 sequence=sequence,
                 start=_parse_datetime(properties.get("DTSTART")),
-                end=_parse_datetime(properties.get("DTEND")),
                 raw_block=raw_block,
                 is_qualifier=is_qualifier_event(
                     properties.get("DESCRIPTION", "").split(r"\n", 1)[0],

@@ -144,7 +144,6 @@ def parse_upcoming_matches(
         if tier_two is None:
             raise LiquipediaError("Liquipedia response is missing the Tier 2 section")
         allowed = {_tournament_key(name) for name in tier_two_allowlist}
-        source_ids = {match.source_id for match in matches if match.source_id}
         for card in tier_two.select(".match-info"):
             if _is_qualifier_card(card):
                 continue
@@ -156,13 +155,9 @@ def parse_upcoming_matches(
             ):
                 continue
             match = _parse_match_card(card, liquipedia_tier=2)
-            if match.source_id and match.source_id in source_ids:
-                continue
             matches.append(match)
-            if match.source_id:
-                source_ids.add(match.source_id)
 
-    return sorted(matches, key=lambda match: (match.start, match.team1, match.team2))
+    return matches
 
 
 def _parse_match_card(card: Tag, liquipedia_tier: int = 1) -> Match:

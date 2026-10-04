@@ -3,11 +3,70 @@ from dataclasses import replace
 import re
 import unittest
 
-from liquipedia_ical.calendar import build_calendar, event_uid
+from liquipedia_ical.calendar import build_calendar, event_uid, read_previous_events
 from liquipedia_ical.matches import Match
 
 
 class BuildCalendarTest(unittest.TestCase):
+    def test_postponement_keeps_uid_after_old_start_and_end(self) -> None:
+        first = build_calendar([self.match], self.first_run)
+        postponed = replace(self.match, start=datetime(2026, 7, 18, 18, tzinfo=UTC))
+        uid = event_uid(self.match)
+        for hour in (11, 12, 14, 15):
+            with self.subTest(hour=hour):
+                now = datetime(2026, 7, 17, hour, tzinfo=UTC)
+                # The match can disappear from the response before reappearing.
+                archived = build_calendar([], now, first)
+                updated = build_calendar([postponed], now, archived)
+                events = read_previous_events(updated)
+                self.assertEqual(list(events), [uid])
+                self.assertEqual(events[uid].start, postponed.start)
+                self.assertEqual(events[uid].sequence, 1)
+                self.assertEqual(events[uid].dtstamp, now.strftime("%Y%m%dT%H%M%SZ"))
+                self.assertEqual(build_calendar([postponed], now, updated), updated)
+
+    def test_missing_match_at_its_start_is_retained(self) -> None:
+        first = build_calendar([self.match], self.first_run)
+        self.assertEqual(build_calendar([], self.match.start, first), first)
+
+    def test_missing_source_id_is_rejected_instead_of_guessing_identity(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Missing Liquipedia match ID"):
+            build_calendar([replace(self.match, source_id=None)], self.first_run)
+
+    def test_rematch_has_its_own_identity_and_preserves_previous_match(self) -> None:
+        first = build_calendar([self.match], self.first_run)
+        rematch = replace(
+            self.match, source_id="Match:ID_rematch",
+            start=datetime(2026, 7, 18, 11, tzinfo=UTC),
+        )
+        result = build_calendar([rematch], datetime(2026, 7, 17, 15, tzinfo=UTC), first)
+        self.assertEqual(set(read_previous_events(result)), {event_uid(self.match), event_uid(rematch)})
+
+    def test_duplicate_ids_keep_first_occurrence_within_either_tier(self) -> None:
+        for tier in (1, 2):
+            with self.subTest(tier=tier):
+                first = replace(self.match, liquipedia_tier=tier)
+                duplicate = replace(first, team1="Conflicting team")
+                calendar = build_calendar([first, duplicate], self.first_run)
+                self.assertEqual(len(read_previous_events(calendar)), 1)
+                self.assertNotIn("Conflicting team", calendar)
+
+    def test_duplicate_ids_prefer_tier_one_regardless_of_input_order(self) -> None:
+        tier_two = replace(self.match, liquipedia_tier=2, team1="Tier two copy")
+        expected = build_calendar([self.match], self.first_run)
+        for matches in ([tier_two, self.match], [self.match, tier_two]):
+            self.assertEqual(build_calendar(matches, self.first_run), expected)
+
+    def test_output_order_is_stable_for_ties_and_retained_history(self) -> None:
+        other = replace(self.match, source_id="Match:ID_other")
+        future = replace(self.match, source_id="Match:ID_future", start=datetime(2026, 7, 18, 11, tzinfo=UTC))
+        expected = build_calendar([self.match, other, future], self.first_run)
+        self.assertEqual(build_calendar([future, other, self.match], self.first_run), expected)
+        self.assertEqual(
+            build_calendar([future], datetime(2026, 7, 17, 15, tzinfo=UTC), expected),
+            expected,
+        )
+
     def test_excludes_new_qualifier_events(self) -> None:
         qualifier = replace(self.match, tournament="Test League - Closed Qualifier")
         self.assertNotIn("BEGIN:VEVENT", build_calendar([qualifier], self.first_run))
@@ -118,7 +177,7 @@ class BuildCalendarTest(unittest.TestCase):
 
         self.assertEqual(_event_block(later), original_event)
 
-    def test_does_not_update_an_expired_match(self) -> None:
+    def test_updates_a_returned_match_after_its_old_estimated_end(self) -> None:
         first = build_calendar([self.match], self.first_run)
         changed = Match(
             start=datetime(2026, 7, 17, 12, 0, tzinfo=UTC),
@@ -136,8 +195,9 @@ class BuildCalendarTest(unittest.TestCase):
             previous_calendar=first,
         )
 
-        self.assertEqual(_event_block(later), _event_block(first))
-        self.assertNotIn("Changed Team", later)
+        self.assertIn("Changed Team", later)
+        self.assertIn("DTSTART:20260717T120000Z", later)
+        self.assertIn("SEQUENCE:1", later)
 
     def test_removes_a_missing_future_match(self) -> None:
         first = build_calendar([self.match], self.first_run)
