@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
 import json
+import logging
 import re
 from typing import Iterable
 
@@ -12,6 +13,7 @@ from liquipedia_ical.matches import MATCHES_PAGE_URL, Match, is_qualifier_event
 
 PRODID = "-//zizhengwu//liquipedia_ical//Dota 2 Tier 1 Matches//EN"
 UID_DOMAIN = "liquipedia-ical"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +43,12 @@ def build_calendar(
 
     for match in matches:
         if is_qualifier_event(match.tournament, match.source_url):
+            continue
+        if not match.source_id:
+            logger.warning(
+                "Skipping %s vs %s in %s: missing Liquipedia match ID",
+                match.team1, match.team2, match.tournament,
+            )
             continue
         uid = event_uid(match)
         # Prefer Tier 1 across tiers; within a tier, keep the first occurrence.

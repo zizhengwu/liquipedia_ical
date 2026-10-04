@@ -29,9 +29,24 @@ class BuildCalendarTest(unittest.TestCase):
         first = build_calendar([self.match], self.first_run)
         self.assertEqual(build_calendar([], self.match.start, first), first)
 
-    def test_missing_source_id_is_rejected_instead_of_guessing_identity(self) -> None:
-        with self.assertRaisesRegex(ValueError, "Missing Liquipedia match ID"):
-            build_calendar([replace(self.match, source_id=None)], self.first_run)
+    def test_missing_source_id_is_skipped_with_a_warning(self) -> None:
+        unidentified = replace(self.match, source_id=None)
+        with self.assertLogs("liquipedia_ical.calendar", level="WARNING") as logs:
+            calendar = build_calendar([unidentified, self.match], self.first_run)
+        self.assertEqual(set(read_previous_events(calendar)), {event_uid(self.match)})
+        self.assertIn("missing Liquipedia match ID", logs.output[0])
+        self.assertIn(self.match.team1, logs.output[0])
+
+    def test_all_missing_ids_still_apply_normal_history_rules(self) -> None:
+        first = build_calendar([self.match], self.first_run)
+        for hour, expected_count in ((3, 0), (15, 1)):
+            with self.subTest(hour=hour):
+                with self.assertLogs("liquipedia_ical.calendar", level="WARNING"):
+                    calendar = build_calendar(
+                        [replace(self.match, source_id=None)],
+                        datetime(2026, 7, 17, hour, tzinfo=UTC), first,
+                    )
+                self.assertEqual(len(read_previous_events(calendar)), expected_count)
 
     def test_rematch_has_its_own_identity_and_preserves_previous_match(self) -> None:
         first = build_calendar([self.match], self.first_run)
