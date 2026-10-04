@@ -32,6 +32,7 @@ uv run python -m unittest discover -s tests -v
 
 ## Calendar behavior
 
+- Qualifier events (including open/closed qualifiers and abbreviated `Qual`/`Quals` stages) are excluded from both upcoming matches and retained history, even for allowlisted tournaments.
 - The feed contains up to 50 upcoming Tier 1 matches, plus allowlisted tournaments from the next 50 Tier 2 matches, including TBD participants.
 - Edit [the Tier 2 allowlist](src/liquipedia_ical/data/tier2_allowlist.txt) to add tournament names, one per line. It includes **PGL Wallachia Season 9** by default. Blank lines and lines beginning with `#` are ignored. Names are case-insensitive; `Season 9` also matches `S9`, and stage suffixes such as ` - Round 1` or ` - Playoffs` are included. Other seasons do not match.
 - Use `--tier2-allowlist path/to/file.txt` to supply another list. An empty file disables Tier 2 fetching. Allowlisted matches outside Liquipedia's next 50 Tier 2 matches appear once they enter that window.

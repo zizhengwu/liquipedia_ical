@@ -31,6 +31,23 @@ def _tournament_key(name: str) -> str:
     return re.sub(r"\bseason\s+(\d+)\b", r"s\1", name)
 
 
+def is_qualifier_event(*labels: str) -> bool:
+    """Recognize qualifier names, abbreviations, and tournament URL paths."""
+    return any(
+        re.search(r"\b(?:quals?|qualifiers?|qualification)\b", unquote(label).replace("_", " "), re.IGNORECASE)
+        for label in labels
+    )
+
+
+def _is_qualifier_card(card: Tag) -> bool:
+    tournament = card.select_one(".match-info-tournament-name")
+    labels = [_text(tournament)]
+    if tournament is not None:
+        for link in tournament.select("a"):
+            labels.extend(str(link.get(attribute, "")) for attribute in ("href", "title"))
+    return is_qualifier_event(*labels)
+
+
 class LiquipediaError(RuntimeError):
     """Raised when the Liquipedia response cannot safely produce a calendar."""
 
@@ -111,12 +128,16 @@ def fetch_matches_html(
 def parse_upcoming_matches(
     html: str, *, tier_two_allowlist: set[str] | None = None
 ) -> list[Match]:
-    """Parse Tier 1 matches and explicitly allowed Tier 2 tournaments."""
+    """Parse Tier 1 and allowlisted Tier 2 matches, excluding qualifiers."""
     soup = BeautifulSoup(html, "html.parser")
     container = soup.select_one("#liquipedia-tier-1-matches")
     if container is None:
         raise LiquipediaError("Liquipedia response is missing the Tier 1 section")
-    matches = [_parse_match_card(card) for card in container.select(".match-info")]
+    matches = [
+        _parse_match_card(card)
+        for card in container.select(".match-info")
+        if not _is_qualifier_card(card)
+    ]
 
     if tier_two_allowlist:
         tier_two = soup.select_one("#liquipedia-tier-2-matches")
@@ -125,6 +146,8 @@ def parse_upcoming_matches(
         allowed = {_tournament_key(name) for name in tier_two_allowlist}
         source_ids = {match.source_id for match in matches if match.source_id}
         for card in tier_two.select(".match-info"):
+            if _is_qualifier_card(card):
+                continue
             name = _text(card.select_one(".match-info-tournament-name"))
             name = _tournament_key(name)
             if not any(

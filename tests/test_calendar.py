@@ -8,6 +8,21 @@ from liquipedia_ical.matches import Match
 
 
 class BuildCalendarTest(unittest.TestCase):
+    def test_excludes_new_qualifier_events(self) -> None:
+        qualifier = replace(self.match, tournament="Test League - Closed Qualifier")
+        self.assertNotIn("BEGIN:VEVENT", build_calendar([qualifier], self.first_run))
+
+    def test_removes_qualifiers_from_existing_calendar_including_history(self) -> None:
+        first = build_calendar([self.match], self.first_run)
+        for label in ("Closed Qualifier", "EU Qual."):
+            previous = first.replace("Tournament: ", f"Tournament: {label} - ")
+            for hour in (3, 12, 15):
+                with self.subTest(label=label, hour=hour):
+                    calendar = build_calendar(
+                        [], datetime(2026, 7, 17, hour, tzinfo=UTC), previous
+                    )
+                    self.assertNotIn("BEGIN:VEVENT", calendar)
+
     def test_tier_change_updates_metadata_without_changing_uid(self) -> None:
         first = build_calendar([self.match], self.first_run)
         tier_two = replace(self.match, liquipedia_tier=2)

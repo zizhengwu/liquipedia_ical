@@ -73,6 +73,33 @@ BRACKET_SEED_HTML = """
 
 
 class ParseUpcomingMatchesTest(unittest.TestCase):
+    def test_excludes_qualifiers_in_both_tiers_even_when_allowlisted(self) -> None:
+        for stage in ("Open Qualifier", "Closed Qualifiers", "EU Qual.", "NA QUALS", "Qualification"):
+            for tier in (1, 2):
+                with self.subTest(stage=stage, tier=tier):
+                    cards = [
+                        match_card("Test League - Playoffs", "main"),
+                        match_card(f"Test League - {stage}", "qual", timestamp="invalid"),
+                    ]
+                    html = tier_section(1, *(cards if tier == 1 else []))
+                    html += tier_section(2, *(cards if tier == 2 else []))
+                    matches = parse_upcoming_matches(html, tier_two_allowlist={"Test League"})
+                    self.assertEqual([match.tournament for match in matches], ["Test League - Playoffs"])
+
+    def test_excludes_qualifier_identified_only_by_tournament_link(self) -> None:
+        for attribute in (
+            'href="/dota2/Test_League/Closed_Qualifier"',
+            'href="/dota2/Test_League/Closed%20Qualifier"',
+            'href="/dota2/Test_League" title="Test League/Open Qualifier"',
+        ):
+            with self.subTest(attribute=attribute):
+                card = match_card().replace('href="/dota2/Test_League"', attribute)
+                self.assertEqual(parse_upcoming_matches(tier_section(1, card)), [])
+
+    def test_qualifier_words_in_team_names_do_not_exclude_main_event(self) -> None:
+        html = HTML.replace("Team Two", "Qualifiers United")
+        self.assertEqual(len(parse_upcoming_matches(html)), 1)
+
     def test_loads_allowlist_with_comments_and_blank_lines(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "allowlist.txt"

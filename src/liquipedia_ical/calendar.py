@@ -7,7 +7,7 @@ import json
 import re
 from typing import Iterable
 
-from liquipedia_ical.matches import MATCHES_PAGE_URL, Match
+from liquipedia_ical.matches import MATCHES_PAGE_URL, Match, is_qualifier_event
 
 
 PRODID = "-//zizhengwu//liquipedia_ical//Dota 2 Tier 1 Matches//EN"
@@ -22,6 +22,7 @@ class PreviousEvent:
     start: datetime | None
     end: datetime | None
     raw_block: str
+    is_qualifier: bool = False
 
 
 def build_calendar(
@@ -31,11 +32,17 @@ def build_calendar(
 ) -> str:
     """Build an RFC 5545 calendar while retaining unchanged event metadata."""
     generated_at = generated_at.astimezone(UTC).replace(microsecond=0)
-    previous = read_previous_events(previous_calendar or "")
+    previous = {
+        uid: event
+        for uid, event in read_previous_events(previous_calendar or "").items()
+        if not event.is_qualifier
+    }
     events: list[tuple[datetime, str]] = []
     seen_uids: set[str] = set()
 
     for match in sorted(matches, key=lambda item: (item.start, item.team1, item.team2)):
+        if is_qualifier_event(match.tournament, match.source_url):
+            continue
         uid = event_uid(match)
         if uid in seen_uids:
             raise ValueError(
@@ -179,6 +186,11 @@ def read_previous_events(calendar: str) -> dict[str, PreviousEvent]:
                 start=_parse_datetime(properties.get("DTSTART")),
                 end=_parse_datetime(properties.get("DTEND")),
                 raw_block=raw_block,
+                is_qualifier=is_qualifier_event(
+                    properties.get("DESCRIPTION", "").split(r"\n", 1)[0],
+                    properties.get("SUMMARY", "").partition(" — ")[2],
+                    properties.get("URL", ""),
+                ),
             )
     return previous
 
