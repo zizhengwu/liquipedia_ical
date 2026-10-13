@@ -83,12 +83,21 @@ class BuildCalendarTest(unittest.TestCase):
         )
 
     def test_excludes_new_qualifier_events(self) -> None:
-        qualifier = replace(self.match, tournament="Test League - Closed Qualifier")
-        self.assertNotIn("BEGIN:VEVENT", build_calendar([qualifier], self.first_run))
+        for name in (
+            "Test League - Closed Qualifier", "DreamLeague S30 CN CQ",
+            "DreamLeague S30 WEU OQ", "BLAST SLAM IX CN CQ",
+            "DreamLeague S30 EEU OQ1", "DreamLeague S30 SEA OQ2",
+        ):
+            with self.subTest(name=name):
+                qualifier = replace(self.match, tournament=name)
+                self.assertNotIn("BEGIN:VEVENT", build_calendar([qualifier], self.first_run))
 
     def test_removes_qualifiers_from_existing_calendar_including_history(self) -> None:
         first = build_calendar([self.match], self.first_run)
-        for label in ("Closed Qualifier", "EU Qual."):
+        for label in (
+            "Closed Qualifier", "EU Qual.", "DreamLeague S30 CN CQ", "WEU OQ",
+            "DreamLeague S30 EEU OQ1", "DreamLeague S30 SEA OQ2",
+        ):
             previous = first.replace("Tournament: ", f"Tournament: {label} - ")
             for hour in (3, 12, 15):
                 with self.subTest(label=label, hour=hour):

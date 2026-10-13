@@ -74,7 +74,11 @@ BRACKET_SEED_HTML = """
 
 class ParseUpcomingMatchesTest(unittest.TestCase):
     def test_excludes_qualifiers_in_both_tiers_even_when_allowlisted(self) -> None:
-        for stage in ("Open Qualifier", "Closed Qualifiers", "EU Qual.", "NA QUALS", "Qualification"):
+        for stage in (
+            "Open Qualifier", "Closed Qualifiers", "EU Qual.", "NA QUALS",
+            "Qualification", "CN CQ", "WEU OQ", "cq", "oq",
+            "EEU OQ1", "SEA OQ2", "CN OQ 2", "CQ1", "oq2",
+        ):
             for tier in (1, 2):
                 with self.subTest(stage=stage, tier=tier):
                     cards = [
@@ -86,19 +90,46 @@ class ParseUpcomingMatchesTest(unittest.TestCase):
                     matches = parse_upcoming_matches(html, tier_two_allowlist={"Test League"})
                     self.assertEqual([match.tournament for match in matches], ["Test League - Playoffs"])
 
+    def test_excludes_dreamleague_abbreviated_qualifiers(self) -> None:
+        html = tier_section(
+            1,
+            match_card("DreamLeague S30 CN CQ", "closed"),
+            match_card("DreamLeague S30 WEU OQ", "open"),
+            match_card("DreamLeague S30 EEU OQ1", "open1"),
+            match_card("DreamLeague S30 SEA OQ2", "open2"),
+            match_card("DreamLeague S30 - Playoffs", "main"),
+        )
+        self.assertEqual(
+            [match.tournament for match in parse_upcoming_matches(html)],
+            ["DreamLeague S30 - Playoffs"],
+        )
+
     def test_excludes_qualifier_identified_only_by_tournament_link(self) -> None:
         for attribute in (
             'href="/dota2/Test_League/Closed_Qualifier"',
             'href="/dota2/Test_League/Closed%20Qualifier"',
+            'href="/dota2/Test_League/CN_CQ"',
+            'href="/dota2/Test_League/WEU%20OQ"',
+            'href="/dota2/Test_League/EEU_OQ1"',
+            'href="/dota2/Test_League/SEA%20OQ2"',
             'href="/dota2/Test_League" title="Test League/Open Qualifier"',
+            'href="/dota2/Test_League" title="Test League CN CQ"',
+            'href="/dota2/Test_League" title="Test League SEA OQ2"',
         ):
             with self.subTest(attribute=attribute):
                 card = match_card().replace('href="/dota2/Test_League"', attribute)
                 self.assertEqual(parse_upcoming_matches(tier_section(1, card)), [])
 
     def test_qualifier_words_in_team_names_do_not_exclude_main_event(self) -> None:
-        html = HTML.replace("Team Two", "Qualifiers United")
-        self.assertEqual(len(parse_upcoming_matches(html)), 1)
+        for team in ("Qualifiers United", "CQ", "OQ"):
+            with self.subTest(team=team):
+                html = HTML.replace("Team Two", team)
+                self.assertEqual(len(parse_upcoming_matches(html)), 1)
+
+    def test_qualifier_abbreviations_must_be_whole_tokens(self) -> None:
+        for name in ("ACQ League", "OQon League", "CQGaming Cup"):
+            with self.subTest(name=name):
+                self.assertEqual(len(parse_upcoming_matches(tier_section(1, match_card(name)))), 1)
 
     def test_loads_allowlist_with_comments_and_blank_lines(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

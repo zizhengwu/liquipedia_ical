@@ -32,9 +32,13 @@ def _tournament_key(name: str) -> str:
 
 
 def is_qualifier_event(*labels: str) -> bool:
-    """Recognize qualifier names, abbreviations, and tournament URL paths."""
+    """Recognize qualifier names and CQ/OQ abbreviations, including numbered ones."""
     return any(
-        re.search(r"\b(?:quals?|qualifiers?|qualification)\b", unquote(label).replace("_", " "), re.IGNORECASE)
+        re.search(
+            r"\b(?:quals?|qualifiers?|qualification|[co]q\d*)\b",
+            unquote(label).replace("_", " "),
+            re.IGNORECASE,
+        )
         for label in labels
     )
 
