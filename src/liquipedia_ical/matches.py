@@ -32,10 +32,10 @@ def _tournament_key(name: str) -> str:
 
 
 def is_qualifier_event(*labels: str) -> bool:
-    """Recognize qualifier names and CQ/OQ abbreviations, including numbered ones."""
+    """Recognize qualifiers, play-ins, and CQ/OQ abbreviations."""
     return any(
         re.search(
-            r"\b(?:quals?|qualifiers?|qualification|[co]q\d*)\b",
+            r"\b(?:quals?|qualifiers?|qualification|[co]q\d*|play[\s\-–‑]*ins?)\b",
             unquote(label).replace("_", " "),
             re.IGNORECASE,
         )

@@ -86,6 +86,7 @@ class BuildCalendarTest(unittest.TestCase):
         for name in (
             "Test League - Closed Qualifier", "DreamLeague S30 CN CQ",
             "DreamLeague S30 WEU OQ", "BLAST SLAM IX CN CQ",
+            "Test League - Play-In",
             "DreamLeague S30 EEU OQ1", "DreamLeague S30 SEA OQ2",
         ):
             with self.subTest(name=name):
@@ -96,6 +97,7 @@ class BuildCalendarTest(unittest.TestCase):
         first = build_calendar([self.match], self.first_run)
         for label in (
             "Closed Qualifier", "EU Qual.", "DreamLeague S30 CN CQ", "WEU OQ",
+            "Play-In", "Play Ins",
             "DreamLeague S30 EEU OQ1", "DreamLeague S30 SEA OQ2",
         ):
             previous = first.replace("Tournament: ", f"Tournament: {label} - ")

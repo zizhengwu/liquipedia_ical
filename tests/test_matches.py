@@ -78,6 +78,7 @@ class ParseUpcomingMatchesTest(unittest.TestCase):
             "Open Qualifier", "Closed Qualifiers", "EU Qual.", "NA QUALS",
             "Qualification", "CN CQ", "WEU OQ", "cq", "oq",
             "EEU OQ1", "SEA OQ2", "CN OQ 2", "CQ1", "oq2",
+            "Play-in", "Play-ins", "Play In", "PLAY INS", "Playin", "Play–In",
         ):
             for tier in (1, 2):
                 with self.subTest(stage=stage, tier=tier):
@@ -112,6 +113,10 @@ class ParseUpcomingMatchesTest(unittest.TestCase):
             'href="/dota2/Test_League/WEU%20OQ"',
             'href="/dota2/Test_League/EEU_OQ1"',
             'href="/dota2/Test_League/SEA%20OQ2"',
+            'href="/dota2/Test_League/Play-In"',
+            'href="/dota2/Test_League/Play_In"',
+            'href="/dota2/Test_League/Play%20In"',
+            'href="/dota2/Test_League" title="Test League Play-In"',
             'href="/dota2/Test_League" title="Test League/Open Qualifier"',
             'href="/dota2/Test_League" title="Test League CN CQ"',
             'href="/dota2/Test_League" title="Test League SEA OQ2"',
