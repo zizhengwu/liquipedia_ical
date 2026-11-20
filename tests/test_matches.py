@@ -44,6 +44,29 @@ def tier_section(tier: int, *cards: str) -> str:
 
 HTML = tier_section(1, match_card())
 
+TICKER_CARD = """
+<div class="match-ticker-card">
+  <div class="match-ticker-card&#95;&#95;header">
+    <span class="timer-object" data-timestamp="1795180200">Nov 20</span>
+    <div>Group A - Bo3</div>
+  </div>
+  <div class="match-ticker-card__opponent">
+    <span class="name"><span class="team-shortname">NAVI</span>
+      <span class="team-name">Natus Vincere</span></span><div>1</div>
+  </div>
+  <div class="match-ticker-card__opponent">
+    <span class="name"><span class="team-shortname">OG</span>
+      <span class="team-name">OG</span></span><div>0</div>
+  </div>
+  <span class="match-ticker-card-tournament-name">
+    <a href="/dota2/BLAST/SLAM/9#Group_A">BLAST SLAM IX</a>
+  </span>
+  <div class="match-info-links">
+    <a href="/dota2/index.php?title=Match:ID_5Tu00kfovA_0002&amp;action=edit">Details</a>
+  </div>
+</div>
+"""
+
 BRACKET_SEED_HTML = """
 <div id="liquipedia-tier-1-matches">
   <div class="match-info">
@@ -73,6 +96,32 @@ BRACKET_SEED_HTML = """
 
 
 class ParseUpcomingMatchesTest(unittest.TestCase):
+    def test_ticker_card_preserves_match_id_stage_and_short_names(self) -> None:
+        match, = parse_upcoming_matches(tier_section(1, TICKER_CARD))
+        self.assertEqual(match.source_id, "Match:ID_5Tu00kfovA_0002")
+        self.assertEqual(match.start, datetime(2026, 11, 20, 13, 10, tzinfo=UTC))
+        self.assertEqual((match.team1, match.team2), ("NAVI", "OG"))
+        self.assertEqual(match.tournament, "BLAST SLAM IX - Group A")
+        self.assertEqual(match.series_format, "Bo3")
+
+    def test_ticker_filters_by_tournament_and_separate_stage(self) -> None:
+        html = tier_section(1) + tier_section(
+            2, TICKER_CARD,
+            TICKER_CARD.replace("Group A - Bo3", "Closed Qualifier - Bo3"),
+            TICKER_CARD.replace("BLAST SLAM IX", "Other League"),
+        )
+        match, = parse_upcoming_matches(html, tier_two_allowlist={"BLAST SLAM IX"})
+        self.assertEqual(match.tournament, "BLAST SLAM IX - Group A")
+        self.assertEqual(match.liquipedia_tier, 2)
+
+    def test_unrecognized_timed_card_is_not_treated_as_an_empty_schedule(self) -> None:
+        unknown = '<div class="new-card"><span class="timer-object" data-timestamp="1784286000"></span></div>'
+        for cards in ([unknown], [match_card(), unknown]):
+            with self.subTest(cards=len(cards)), self.assertRaisesRegex(
+                LiquipediaError, "Unrecognized match card in Tier 1"
+            ):
+                parse_upcoming_matches(tier_section(1, *cards))
+
     def test_excludes_qualifiers_in_both_tiers_even_when_allowlisted(self) -> None:
         for stage in (
             "Open Qualifier", "Closed Qualifiers", "EU Qual.", "NA QUALS",
